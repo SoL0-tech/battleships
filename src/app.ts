@@ -2,53 +2,60 @@
  * A simple game of battleships
  * written in Typescript
  *
- * by Jared Murphy (2022)
+ * by Jared Murphy (Sept 2022)
  */
 
+import { Grid } from './grid'
+import { ShipFactory } from './shipFactory'
+import {
+	FireResult,
+	IGrid,
+	ShipType,
+} from './types'
 
-const container = getGameContainer()
-const [numRows, numCols] = [10, 10] 	// Grid size
-
+const [NUM_ROWS, NUM_COLS] = [10, 10]
+let hideOrShow: 'Hide' | 'Show' = 'Hide'
 let shotsTaken = 0
-let squaresSunk = 0
 
-initializeHtmlElements(container, numRows, numCols)
+const grid = new Grid(NUM_ROWS, NUM_COLS)
 
-// "B" - Undamaged Part of Ship,
-// "X" - Sunken Part of Ship,
-// "." - Clear Water,
-// "-" - Torpedo Miss
-type SquareContent = "B" | "X" | "." | "-"
+populateGridWithShips([
+	ShipType.Battleship,
+	ShipType.Destroyer,
+	ShipType.Destroyer,
+], grid)
 
-// Initialize the game matrix
-let grid: Array<Array<SquareContent>> = Array.from({ length: numRows }, () =>
-	Array.from({ length: numCols }, () => '.'))
-
-populateGridWithShips(grid)
+initializeHtmlElements(NUM_ROWS, NUM_COLS)
 
 /**
- * @returns The HTML element reserved for our game
+ * Spawns ships of given types onto the grid
  */
-function getGameContainer(): HTMLElement {
-	const gameContainer = document.getElementById("gameContainer")
-	if (!gameContainer) {
-		throw new Error("Container element not found")
+function populateGridWithShips(shipTypes: ShipType[], grid: IGrid): void {
+	for (let shipType of shipTypes) {
+		spawnRandomShip(shipType)
 	}
 
-	return gameContainer
+	function spawnRandomShip(shipType: ShipType): void {
+		ShipFactory.create(shipType, grid)
+	}
 }
 
 /**
  * Initializes the HTML elements to represent the board state,
  * as well as the elements for taking user input.
  */
-function initializeHtmlElements(container: HTMLElement, numRows: number, numCols: number): void {
+function initializeHtmlElements(numRows: number, numCols: number): void {
 	const SQUARE_SIZE = 50 // Size of each square, in pixels
 	const [GRID_TOP_OFFSET, GRID_LEFT_OFFSET] = [120, 70]
 
+	const container = document.getElementById('gameContainer')
+	if (!container) {
+		throw new Error('Game container element not found')
+	}
+
 	// LAST MOVE REPORT
 	createDiv(
-		"Your move...",
+		"Welcome to Battleship. Your move..",
 		GRID_TOP_OFFSET - 2*SQUARE_SIZE,
 		GRID_LEFT_OFFSET,
 		"",
@@ -58,11 +65,10 @@ function initializeHtmlElements(container: HTMLElement, numRows: number, numCols
 	// SHOW BUTTON
 	const showButton = document.createElement("button")
 	showButton.id = "showButton"
-	showButton.innerText = "Show"
 	showButton.style.top = `${GRID_TOP_OFFSET - 2*SQUARE_SIZE}px`
 	showButton.style.left = `${GRID_LEFT_OFFSET+400}px`
 	showButton.style.width = "70px"
-	showButton.onclick = () => showToggle()
+	showButton.onclick = () => toggleHideOrShow()
 	container.appendChild(showButton)
 
 
@@ -88,7 +94,7 @@ function initializeHtmlElements(container: HTMLElement, numRows: number, numCols
 		// row
 		for (let j = 0; j < numCols; ++j) {
 			createDiv(
-				".",
+				"",
 				GRID_TOP_OFFSET + i*SQUARE_SIZE,
 				GRID_LEFT_OFFSET + j*SQUARE_SIZE,
 				"square",
@@ -105,6 +111,7 @@ function initializeHtmlElements(container: HTMLElement, numRows: number, numCols
 	moveLabel.style.left = `${GRID_LEFT_OFFSET}px`
 	container.appendChild(moveLabel)
 
+	// MOVE INPUT
 	const moveInput = document.createElement("input")
 	moveInput.id = "moveInput"
 	moveInput.style.top = `${GRID_TOP_OFFSET + 11*SQUARE_SIZE}px`
@@ -112,8 +119,8 @@ function initializeHtmlElements(container: HTMLElement, numRows: number, numCols
 	moveInput.style.width="40px"
 	moveInput.onkeyup = (e) => inputKeyUp(e)
 	container.appendChild(moveInput)
-	moveInput.focus()
 
+	// MOVE BUTTON
 	const moveButton = document.createElement("button")
 	moveButton.id = "moveButton"
 	moveButton.innerText = "Fire!"
@@ -123,8 +130,12 @@ function initializeHtmlElements(container: HTMLElement, numRows: number, numCols
 	moveButton.onclick = () => fire()
 	container.appendChild(moveButton)
 	
+	resetInput()
+	refreshBattlefieldContents()
 
-
+	/**
+	 * Creates a div from given parameters and appends it onto the container
+	 */
 	function createDiv(
 		text: string, top: number, left: number, className: string, id: string | null = null
 	): void {
@@ -137,150 +148,89 @@ function initializeHtmlElements(container: HTMLElement, numRows: number, numCols
 		e.innerText = text
 		e.className = className
 
-		e.style.top = `${top}px`
-		e.style.left = `${left}px`
+		e.style.top = `${top}px`;
+		e.style.left = `${left}px`;
 
-		container.appendChild(e)
+		(container as HTMLElement).appendChild(e)
 	}
-}
 
-function populateGridWithShips(grid: Array<Array<SquareContent>>): void {
-	spawnRandomShip(4)
-	spawnRandomShip(4)
-	spawnRandomShip(5)
+	/**
+	 * Toggle debugging mode on/off
+	 */
+	function toggleHideOrShow() {
+		hideOrShow = hideOrShow === 'Show' ? 'Hide' : 'Show'
 
-	function spawnRandomShip(len: number): void {
-		// 0 or 1, Vertical or Horizontal
-		const downOrRight = Math.round(Math.random())
+		resetInput()
+		refreshBattlefieldContents()
+	}
 
-		// Make sure ship doesn't overshoot boundaries
-		let [i, j]: [number, number] = [-1,-1];
-		if (downOrRight) {
-			// Down - Vertical
-			i = Math.floor(Math.random()*(10-len))
-			j = Math.floor(Math.random()*10)
+	function inputKeyUp(e: KeyboardEvent): void {
+		const moveInput = (document.getElementById('moveInput') as HTMLInputElement)
+		const moveButton = (document.getElementById("moveButton") as HTMLButtonElement)
+
+		if (moveInput.value === '') {
+			moveButton.disabled = true
+		} else if (e.key === "Enter") {
+			fire()
 		} else {
-			// Right - Horizontal
-			i = Math.floor(Math.random()*10)
-			j = Math.floor(Math.random()*(10-len))
-		}
-
-		// Make sure ship doesn't intersect any others
-		for (let k = 0; k < len; ++k) {
-			const sqContents = downOrRight
-				? grid[i+k][j]
-				: grid[i][j+k]
-			if (sqContents !== '.') {
-				// If there is a ship in the way, roll again
-				return spawnRandomShip(len)
-			}
-		}
-
-		// There is space. Put the ship onto the grid.
-		for (let k = 0; k < len; ++k) {
-			if (downOrRight) {
-				grid[i+k][j] = 'B'
-			} else {
-				grid[i][j+k] = 'B'
-			}
+			moveButton.disabled = false
 		}
 	}
 }
 
 /**
- * Toggle debugging mode on/off
+ * Enacts 'Fire!'
  */
-function showToggle() {
-	const showButton = (document.getElementById('showButton') as HTMLButtonElement)
-	const whatToDo: 'Hide' | 'Show' = showButton.innerText as 'Hide' | 'Show'
+function fire(): void {
+	const moveInputValue = (document.getElementById('moveInput') as HTMLInputElement).value;
 
-	for (let i = 0; i < 10; ++i) {
-		for (let j = 0; j < 10; ++j) {
-			const element = (document.getElementById(`${i}${j}`) as HTMLDivElement);
-			element.innerText = whatToDo === 'Show'
-				? getVisibleSquareContents(i, j)
-				: getHiddenSquareContents(i, j)
-		}
-	}
-
-	showButton.innerText = whatToDo === 'Show'
-		? "Hide"
-		: "Show";
-
-}
-
-function getVisibleSquareContents(i: number, j: number): string {
-	return (grid[i][j] === '.') ? ' ' : grid[i][j]
-}
-function getHiddenSquareContents(i: number, j: number): string {
-	return grid[i][j] === 'B' ? '.' : grid[i][j]
-}
-
-function inputKeyUp(e: KeyboardEvent): void {
-	const moveInput = (document.getElementById('moveInput') as HTMLInputElement)
-	const moveButton = (document.getElementById("moveButton") as HTMLButtonElement)
-
-	if (moveInput.value === '') {
-		moveButton.disabled = true
-	} else if (e.key === "Enter") {
-		fire()
-	} else {
-		moveButton.disabled = false
-	}
-}
-
-function fire() {
-	const moveInput = (document.getElementById('moveInput') as HTMLInputElement);
-	const moveInputValue = moveInput.value;
-
-	// Set input to empty
-	moveInput.value = '';
-	// Set fire button to disabled
-	(document.getElementById('moveButton') as HTMLButtonElement).disabled = true;
-
-	// Convert input to square
 	let square: [row: number, col: number];
 	try {
-		square = getSquare(moveInputValue);
+		square = getSquareCoordsFromInput(moveInputValue);
 	} catch (e) {
 		setLastMoveReport("Invalid move. Try again.")
-
+		resetInput()
 		return
 	}
 
-	// Move is valid - count it as a shot
+	// Move is valid. Proceed
 	shotsTaken += 1
+	const result = grid.fireAtSquare(square[0], square[1])
 
-	const [row, col] = square
-	const sqElement = document.getElementById(`${row}${col}`) as HTMLDivElement;
-
-	switch (grid[row][col]) {
-	case '.':
-		grid[row][col] = '-'
-		setLastMoveReport("Miss")
-	break;
-	case 'B':
-		grid[row][col] = 'X'
-		squaresSunk += 1
-		setLastMoveReport("Hit!")
-	break;
-	default:
-		setLastMoveReport("No change. Wasted shot..")
+	switch (result) {
+		case FireResult.Hit:
+			setLastMoveReport('Hit!')
+		break
+		case FireResult.Miss:
+			setLastMoveReport('Miss')
+		break
+		case FireResult.Waste:
+			setLastMoveReport('Wasted shot')
+		break
+		case FireResult.Sunk:
+			setLastMoveReport('Sunk')
+		break
+		case FireResult.Win:
+			setLastMoveReport('Sunk');
+			(document.getElementById('moveInput') as HTMLInputElement).style.display = 'none';
+			(document.getElementById('moveButton') as HTMLButtonElement).style.display = 'none';
+			(document.getElementById('moveLabel') as HTMLLabelElement).innerText =
+				`Well done! You completed the game in ${shotsTaken} shots`
+		break
+		default:
+			// none
 	}
 
-	sqElement.innerText = getHiddenSquareContents(row, col)
+	resetInput()
+	refreshBattlefieldContents()
 
-	if (squaresSunk >= 13) {
-		setLastMoveReport('Sunk');
-		(document.getElementById('moveInput') as HTMLInputElement).style.display = 'none';
-		(document.getElementById('moveButton') as HTMLButtonElement).style.display = 'none';
-		(document.getElementById('moveLabel') as HTMLLabelElement).innerText =
-			`Well done! You completed the game in ${shotsTaken} shots`
-	}
-
-	function getSquare(value: string): [row: number, col: number] {
-		const firstCharCode = value.charCodeAt(0)
-		const secondOnwards = value.substring(1)
+	/**
+	 * Converts the input to square coordinates
+	 * @throws error if the input is invalid
+	 */
+	function getSquareCoordsFromInput(input: string): [row: number, col: number] {
+		const firstCharCode = input.charCodeAt(0)
+		const secondOnwards = input.substring(1)
 
 		// code < A
 		if (firstCharCode < 65) {
@@ -302,8 +252,8 @@ function fire() {
 			? firstCharCode - 65
 			: firstCharCode - 97
 
-		const col = parseInt(secondOnwards)-1
-		console.log(col)
+		const col = parseInt(secondOnwards) - 1
+
 		if (col != col || col < 0 || col > 9) {
 			throw new Error()
 		}
@@ -312,6 +262,37 @@ function fire() {
 	}
 }
 
+/**
+ * Clears the input box, focuses it and disables the fire button
+ */
+function resetInput(): void {
+	const moveInput = (document.getElementById('moveInput') as HTMLInputElement)
+	// set input to empty
+	moveInput.value = '';
+	// set button to disabled
+	(document.getElementById('moveButton') as HTMLButtonElement).disabled = true;
+	// focus input
+	moveInput.focus()
+}
+
+/**
+ * Repaints the contents of the grid and the show/hide button on the page
+ */
+function refreshBattlefieldContents(): void {
+	const showButton = (document.getElementById('showButton') as HTMLButtonElement)
+	showButton.innerText = hideOrShow === 'Show' ? "Hide" : "Show";
+
+	for (let i = 0; i < 10; ++i) {
+		for (let j = 0; j < 10; ++j) {
+			(document.getElementById(`${i}${j}`) as HTMLDivElement)
+				.innerText = grid.getSquareContent(i, j, hideOrShow);
+		}
+	}
+}
+
+/**
+ * Sets the message at the top of the screen reporting on the last move
+ */
 function setLastMoveReport(msg: string): void {
 	const e = (document.getElementById('lastMoveReport') as HTMLElement);
 	e.innerText = msg;

@@ -1,9 +1,13 @@
 {
   "scripts": {
-    "build": "tsc",
-    "start": "tsc -w"
+    "build": "webpack --config webpack.config.js --mode=production",
+    "dev": "webpack --config webpack.config.js -w --mode=development"
   },
   "devDependencies": {
-    "typescript": "^4.8.3"
+    "html-webpack-plugin": "^5.5.0",
+    "ts-loader": "^9.3.1",
+    "typescript": "^4.8.3",
+    "webpack": "^5.74.0",
+    "webpack-cli": "^4.10.0"
   }
 }

@@ -1,2 +1,4 @@
-build/*.js
+build
+build/!.gitkeep
 node_modules
+.DS_Store
