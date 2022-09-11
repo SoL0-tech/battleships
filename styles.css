@@ -1,0 +1,26 @@
+#gameContainer div {
+	position: absolute;
+	font-size:20px;
+}
+
+#gameContainer div.square {
+	width:50px;
+	height:50px;
+
+	font-size:30px;
+	text-align:center;
+}
+
+#gameContainer div.moveLabel {
+	font-size:20px;
+}
+
+#gameContainer input {
+	position: absolute;
+	font-size:20px;
+}
+
+#gameContainer button {
+	position: absolute;
+	font-size:20px;
+}
